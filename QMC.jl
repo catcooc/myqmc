@@ -6,13 +6,17 @@ U=4
 #print(L)
 mu=U/2
 dt=0.125
-beta=2
+beta=0.5
 M=Int64(beta/dt)
-jsl=0
-gcs=4
-bc=2
+
+gcs=3
+bc=1
+r=0
+global worry
 global jsl
 global gcs
+jsl=0
+worry=0
 #print(M)
 #M=2
 lambda=acosh(exp(U*dt/2))
@@ -45,7 +49,7 @@ function bj(x::Array,w::Int64)
 end
 function k(tz,Lz,dim =1,bh = -)
 	if dim == 1 
-		return [ (abs(bh(i,j))==1 || abs(bh(i,j)+Lz)==1) ? -tz : 0 for i=1:Lz , j=1:Lz ]
+		return [ (abs(bh(i,j))==1 || abs(bh(i,j)+Lz)==1 || abs(bh(i,j)-Lz)==1 ) ? -tz : 0 for i=1:Lz , j=1:Lz ]
 	else
 	#return Matrix{Float64}(undef,mapreduce(x->fj(j,Int64(Lz^0.5)) == x,|,bj(fj(i,Int64(Lz^0.5)),Int64(Lz^0.5))) ? -tz : 0 for i=1:Lz , j=1:Lz )
 	 	return [ mapreduce(x->fj(j,Int64(Lz^0.5)) == x,|,bj(fj(i,Int64(Lz^0.5)),Int64(Lz^0.5))) ? -tz : 0 for i=1:Lz , j=1:Lz ]
@@ -64,6 +68,8 @@ end
 function mmm(matr,arr,st=1)
 	#print(matr[:,:,1])
 	#print(arr[1],arr[2])
+	#println("arr",arr)
+	#println("st:",st)
 	mm=matr[:,:,arr[1]]
 
 	for j in 1:(st-1)
@@ -74,12 +80,13 @@ function mmm(matr,arr,st=1)
 	Uc,S,V=svd(mm)
 	V=transpose(V)
 
-    for i in st:st:length(arr)-st+1
+    for i in (1+st):st:(length(arr)-st+1)
     	
-    	#println()
+    	#println(i)
     	mm=matr[:,:,arr[i]]
     	for j in 1:(st-1)
             #println(j+i)
+            #println("xxx")
     		mm=matr[:,:,arr[i+j]]*mm
     	    
     	end
@@ -89,7 +96,8 @@ function mmm(matr,arr,st=1)
          
           F=svd(inv(Uc)*inv(V)+Diagonal(S))
 
-    return inv(transpose(F.V)*V)*Diagonal(F.S.^-1)*inv(F.U*Uc)
+   return inv(transpose(F.V)*V)*Diagonal(F.S.^-1)*inv(Uc*F.U)
+   #return inv(V)*inv(inv(Uc)*inv(V)+Diagonal(S))*inv(Uc)
  end  
 
 
@@ -106,9 +114,10 @@ global sm
 
 
 sm=map(pd,rand(M,L))
-K=exp(map(Float64,k(t,L,dim)))
-
-
+K=exp(map(Float64,k(-dt*t,L,dim)))
+#K=exp([0 1 0 0 0 1 ; 1 0 1 0 0 0; 0 1 0 1 0 0; 0 0 1 0 1 0; 0 0 0 1 0 1 ;1 0 0 0 1 0].*dt)
+#print(map(Float64,k(-dt*t,L,dim)))
+#print(K)
 
 green()
 
@@ -130,8 +139,10 @@ function green()
     gup=zeros(L,L,M)
 	gdown=zeros(L,L,M)
     for i  in 1:M
-    	bup[:,:,i]=K*exp.(Diagonal(sm[i,:])*(lambda/dt)+I*(mu+U/2).*dt)
-    	bdown[:,:,i]=K*exp.(Diagonal(sm[i,:])*(-lambda/dt)+I*(mu+U/2).*dt)
+    	bup[:,:,i]=K*(Diagonal(map(exp,sm[i,:]*(-1)*lambda.-(-mu+U/2)*dt)))
+    	bdown[:,:,i]=K*(Diagonal(map(exp,sm[i,:]*(1)*lambda.-(-mu+U/2)*dt)))
+    	# bup[:,:,i]=K*exp.(Diagonal(map(Float64,sm[i,:]*(-1)*lambda.-(mu-U/2)*dt)))
+    	# bdown[:,:,i]=K*exp.(Diagonal(map(Float64,sm[i,:]*lambda.-(mu-U/2)*dt)))
 		# vup[:,:,i]=Diagonal(sm[i,:])*(lambda/dt)+I*(mu+U/2)
 		# vdown[:,:,i]=Diagonal(sm[i,:])*(-lambda/dt)+I*(mu+U/2)
   #   	bup[:,:,i]=K*exp.(vup[:,:,i].*dt)
@@ -157,22 +168,30 @@ function green()
 end
 
 function rjs(x,y)
-
+    global r
 	global rup
 	global rdown
-	rup=(exp(-2*lambda*sm[y,x])-1)
+	global worry
+	rup=(exp(2*lambda*sm[y,x])-1)
 
-	rdown=(exp(2*lambda*sm[y,x])-1)
+	rdown=(exp(-2*lambda*sm[y,x])-1)
 	
 	up=1+(1-gup[x,x,y])*rup
 	down=1+(1-gdown[x,x,y])*rdown
 	#print("xxx")
+	r+= up * down
+	if up*down < 0
+		println(up*down)
+		worry=-1
+	end
 	return up*down 
 end
+
+
 function fastup(pl,tt)
     for i in 1:L
     	for j in 1:L
-    		if i != j 
+    		if i != pl 
     			gup[i,j,tt]=gup[i,j,tt]-((-gup[i,pl,tt]*rup*gup[pl,j,tt])/(1+rup*(1-gup[pl,pl,tt])))
 
     	    	gdown[i,j,tt]=gdown[i,j,tt]-((-gdown[i,pl,tt]*rdown*gdown[pl,j,tt])/(1+rdown*(1-gdown[pl,pl,tt])))
@@ -186,11 +205,46 @@ function fastup(pl,tt)
 end
 
 
-function warm(cs)
-	start()
+function up(sp,tt)
+            global jsl
+
+				if  (sp == 1 ) && (tt != 1)
+					#print(sp)
+                    gup[:,:,tt]=bup[:,:,tt-1]*gup[:,:,tt-1]*inv(bup[:,:,tt-1])
+                    gdown[:,:,tt]=bdown[:,:,tt-1]*gdown[:,:,tt-1]*inv(bdown[:,:,tt-1])
+                
+                end    
+				if rjs(sp,tt) > rand()
+					#println("accept")
+					accept=1
+					jsl+= 1
+					    if sp == L || jsl%gcs == 0
+							#println("green")
+							sm[tt,sp] = -sm[tt,sp]
+							green()
+						else
+							#println("fastup")
+							fastup(sp,tt) 
+							sm[tt,sp] = - sm[tt,sp]
+							#vup[:,:,tt]=Diagonal(sm[tt,:])*(lambda/dt)+I*(mu+U/2)
+							#vdown[:,:,tt]=Diagonal(sm[tt,:])*(-lambda/dt)+I*(mu+U/2)
+    						# bup[:,:,tt]=K*exp.(Diagonal(map(Float64,sm[tt,:]*(-1)*lambda.-(mu-U/2)*dt)))
+    						# bdown[:,:,tt]=K*exp.(Diagonal(map(Float64,sm[tt,:]*lambda.-(mu-U/2)*dt)))
+    						bup[:,:,tt]=K*(Diagonal(map(exp,sm[tt,:]*(-1)*lambda.-(-mu+U/2)*dt)))
+							bdown[:,:,tt]=K*(Diagonal(map(exp,sm[tt,:]*(1)*lambda.-(-mu+U/2)*dt)))
+                    	end
+                else
+                    	accept=0
+                    	#println("no accept")	
+			    end
+	return accept
+end
+
+function warm(cs,cl=0,ck=1)
 	global jsl
 	global gcs
-	#print(size(sm))
+	global r
+    start()
 
 	for nn in 1:cs
 		#print(nn)
@@ -200,46 +254,82 @@ function warm(cs)
 			#print(tt)
 			for sp in 1:L
 				#println("ss")
-				
-				if  (sp == 1 ) && (tt != 1)
-					#print(sp)
-                    gup[:,:,tt]=bup[:,:,tt-1]*gup[:,:,tt-1]*inv(bup[:,:,tt-1])
-                    gdown[:,:,tt]=bdown[:,:,tt-1]*gdown[:,:,tt-1]*inv(bdown[:,:,tt-1])
+                up(sp,tt)
                 
-                end    
-				if rjs(sp,tt) > rand()
-					#println("accept")
-					jsl+= 1
-					    if sp == L || jsl%gcs == 0
-							#println("green")
-							sm[tt,sp] = -sm[tt,sp]
-							green()
-						else
-							#println("fastup")
-							fastup(sp,tt) 
-							sm[tt,sp] =-sm[tt,sp]
-							#vup[:,:,tt]=Diagonal(sm[tt,:])*(lambda/dt)+I*(mu+U/2)
-							#vdown[:,:,tt]=Diagonal(sm[tt,:])*(-lambda/dt)+I*(mu+U/2)
-    						bup[:,:,tt]=K*exp.(Diagonal(sm[tt,:])*(lambda/dt)+I*(mu+U/2).*dt)
-    						bdown[:,:,tt]=K*exp.(Diagonal(sm[tt,:])*(-lambda/dt)+I*(mu+U/2).*dt)
-                    	end
-                else
-                    	#println("no accept")	
-			    	
-                end
 		    end
         end
     #println()
-    #print(nn,"jsl:",jsl/(nn*M*L))
+    #println(nn)
     end	
-            
+    println()
+    print("cl")
+    szg=zeros(ck)
+    sxg=zeros(ck)     
+    for nnn in 1:ck
+    	sz=0
+   		sx=0
+    	for nn in 1:Int64(cl/ck)
+		#print(nn)
 
+			for tt in 1:M 
+            #println("m")
+			#print(tt)
+				for sp in 1:L
+				#println("ss")
+                	if rjs(sp,tt) > rand()
+                		sm[tt,sp] = -sm[tt,sp]
+						green()
+					end 
+                		
+                		sz+=(1-gup[1,1,1])^2 + (1-gup[1,1,1])*gup[1,1,1] + (1-gdown[1,1,1])*gdown[1,1,1] - (1-gdown[1,1,1])*(1-gup[1,1,1])- (1-gdown[1,1,1])*(1-gup[1,1,1]) + (1-gdown[1,1,1])^2 
+                		sx+=(1-gup[1,1,1])*gdown[1,1,1] + (1-gdown[1,1,1])*gup[1,1,1]
+		    	end
+        	end
+    #println()
+    	#println(nn)
+        szg[nnn]=sz/(M*L*cl/ck)
+        sxg[nnn]=sx/(M*L*cl/ck)
+    	end
+    	  
+	end
+	return szg,sxg
 
 end
+nnnn=8000
+clll=1000
+ccc=5
 #@time start()
-@time warm(1000)
-print(jsl/(1000*M*L))
+wd=[0.25 0.5 0.75 1 1.25 1.5 1.75 2 2.5 3 3.5 4]
+println(length(wd))
+jg1=zeros(length(wd))
+jg2=zeros(length(wd))
+for tttt in 1:length(wd)
+	global jsl
+	global r 
+	global M 
+	global beta
+	beta= wd[tttt]
+	M=Int64(beta/dt)
 
+	jsl=0
+	r=0
+println("beta M:",beta," ",M)
+@time szz,sxx=warm(nnnn,clll,ccc)
+
+jg1[tttt]=mapreduce(x -> x/ccc,+,szz)
+jg2[tttt]=mapreduce(x -> x /ccc,+,sxx)
+println("sz:",jg1[tttt])
+println("sx:",jg2[tttt])
+println("szwc:",sqrt(abs(mapreduce(x -> (x^2)/ccc,+,szz)-jg1[tttt])/ccc))
+println("sxwc:",sqrt(abs(mapreduce(x -> (x^2)/ccc,+,sxx)-jg2[tttt])/ccc))
+println("jsl:",jsl/(nnnn*M*L+clll*M*L))
+println()
+println("r:",r/(nnnn*M*L+clll*M*L))
+println("worry:",worry)
+end
+println("z:", jg1)
+println("x:",jg2)
+#print(gup)
 # function startcs()
 # global vup 
 # global vdown
@@ -308,4 +398,24 @@ print(jsl/(1000*M*L))
 # #print(ax(1))
 # #print(ax(2))
 # @time startcs()
+# function rjs(x,y)
+#     global r
+# 	global rup
+# 	global rdown
+# 	global worry
+# 	rup=(exp(2*lambda*sm[y,x])-1)
+
+# 	rdown=(exp(-2*lambda*sm[y,x])-1)
+	
+# 	up=1+(1-gup[x,x,y])*rup
+# 	down=1+(1-gdown[x,x,y])*rdown
+# 	#print("xxx")
+# 	r+= up * down
+# 	if up*down < 0
+# 		println(up*down)
+# 		worry=-1
+# 	end
+# 	return up*down 
+# end
+
 
