@@ -6,8 +6,8 @@ U=4
 #print(L)
 mu=U/2
 dt=0.125
-beta=0.5
-M=Int64(beta/dt)
+#beta=0.5
+#M=Int64(beta/dt)
 
 gcs=3
 bc=1
@@ -172,33 +172,36 @@ function rjs(x,y)
 	global rup
 	global rdown
 	global worry
+	global upp
+	global down
+
 	rup=(exp(2*lambda*sm[y,x])-1)
 
 	rdown=(exp(-2*lambda*sm[y,x])-1)
 	
-	up=1+(1-gup[x,x,y])*rup
+	upp=1+(1-gup[x,x,y])*rup
 	down=1+(1-gdown[x,x,y])*rdown
 	#print("xxx")
-	r+= up * down
-	if up*down < 0
-		println(up*down)
+	r+= upp * down
+	if upp*down < 0
+		println(upp*down)
 		worry=-1
 	end
-	return up*down 
+	return upp*down 
 end
 
 
 function fastup(pl,tt)
-    for i in 1:L
+    for i in 1:L   
     	for j in 1:L
     		if i != pl 
-    			gup[i,j,tt]=gup[i,j,tt]-((-gup[i,pl,tt]*rup*gup[pl,j,tt])/(1+rup*(1-gup[pl,pl,tt])))
+    			gup[i,j,tt]=gup[i,j,tt]-((-gup[i,pl,tt]*rup*gup[pl,j,tt])/upp)#(1+rup*(1-gup[pl,pl,tt])))
 
-    	    	gdown[i,j,tt]=gdown[i,j,tt]-((-gdown[i,pl,tt]*rdown*gdown[pl,j,tt])/(1+rdown*(1-gdown[pl,pl,tt])))
+    	    	gdown[i,j,tt]=gdown[i,j,tt]-((-gdown[i,pl,tt]*rdown*gdown[pl,j,tt])/down)#(1+rdown*(1-gdown[pl,pl,tt])))
     		else
-    			gup[i,j,tt]=gup[i,j,tt]-(((1-gup[i,pl,tt])*rup*gup[pl,j,tt])/(1+rup*(1-gup[pl,pl,tt])))
+    			gup[i,j,tt]=gup[i,j,tt]-(((1-gup[i,pl,tt])*rup*gup[pl,j,tt])/upp)#(1+rup*(1-gup[pl,pl,tt])))
 
-    	    	gdown[i,j,tt]=gdown[i,j,tt]-(((1-gdown[i,pl,tt])*rdown*gdown[pl,j,tt])/(1+rdown*(1-gdown[pl,pl,tt])))
+    	    	gdown[i,j,tt]=gdown[i,j,tt]-(((1-gdown[i,pl,tt])*rdown*gdown[pl,j,tt])/down) #(1+rdown*(1-gdown[pl,pl,tt])))
             end
         end
      end
@@ -210,6 +213,8 @@ function up(sp,tt)
 
 				if  (sp == 1 ) && (tt != 1)
 					#print(sp)
+					#for TT in  tt:M
+
                     gup[:,:,tt]=bup[:,:,tt-1]*gup[:,:,tt-1]*inv(bup[:,:,tt-1])
                     gdown[:,:,tt]=bdown[:,:,tt-1]*gdown[:,:,tt-1]*inv(bdown[:,:,tt-1])
                 
@@ -244,6 +249,7 @@ function warm(cs,cl=0,ck=1)
 	global jsl
 	global gcs
 	global r
+	println("warm")
     start()
 
 	for nn in 1:cs
@@ -262,7 +268,7 @@ function warm(cs,cl=0,ck=1)
     #println(nn)
     end	
     println()
-    print("cl")
+    println("measure")
     szg=zeros(ck)
     sxg=zeros(ck)     
     for nnn in 1:ck
@@ -276,20 +282,25 @@ function warm(cs,cl=0,ck=1)
 			#print(tt)
 				for sp in 1:L
 				#println("ss")
-                	if rjs(sp,tt) > rand()
-                		sm[tt,sp] = -sm[tt,sp]
-						green()
-					end 
+     #            	if rjs(sp,tt) > rand()
+     #            		sm[tt,sp] = -sm[tt,sp]
+					# 	green()
+					# end 
+                		up(sp,tt)
+                
                 		
-                		sz+=(1-gup[1,1,1])^2 + (1-gup[1,1,1])*gup[1,1,1] + (1-gdown[1,1,1])*gdown[1,1,1] - (1-gdown[1,1,1])*(1-gup[1,1,1])- (1-gdown[1,1,1])*(1-gup[1,1,1]) + (1-gdown[1,1,1])^2 
-                		sx+=(1-gup[1,1,1])*gdown[1,1,1] + (1-gdown[1,1,1])*gup[1,1,1]
 		    	end
         	end
+        	sz+= mapreduce(x -> x/L,+,[(1-gup[i,i,1])^2 + (1-gup[i,i,1])*gup[i,i,1] + (1-gdown[i,i,1])*gdown[i,i,1] - (1-gdown[i,i,1])*(1-gup[i,i,1])- (1-gdown[i,i,1])*(1-gup[i,i,1]) + (1-gdown[i,i,1])^2  for i in 1:L])
+        	#sz+=(1-gup[1,1,1])^2 + (1-gup[1,1,1])*gup[1,1,1] + (1-gdown[1,1,1])*gdown[1,1,1] - (1-gdown[1,1,1])*(1-gup[1,1,1])- (1-gdown[1,1,1])*(1-gup[1,1,1]) + (1-gdown[1,1,1])^2 
+            #sx+=(1-gup[1,1,1])*gdown[1,1,1] + (1-gdown[1,1,1])*gup[1,1,1]
+            sx+=mapreduce(x -> x/L,+,(1-gup[i,i,1])*gdown[i,i,1] + (1-gdown[i,i,1])*gup[i,i,1] for i in 1:L)
     #println()
     	#println(nn)
-        szg[nnn]=sz/(M*L*cl/ck)
-        sxg[nnn]=sx/(M*L*cl/ck)
+        
     	end
+    	szg[nnn]=sz/(cl/ck)
+        sxg[nnn]=sx/(cl/ck)
     	  
 	end
 	return szg,sxg
@@ -300,7 +311,8 @@ clll=1000
 ccc=5
 #@time start()
 wd=[0.25 0.5 0.75 1 1.25 1.5 1.75 2 2.5 3 3.5 4]
-println(length(wd))
+gcs=L*0.5
+println("wd,gcs,bc:",length(wd),' ',gcs,' ',bc)
 jg1=zeros(length(wd))
 jg2=zeros(length(wd))
 for tttt in 1:length(wd)
@@ -323,9 +335,9 @@ println("sx:",jg2[tttt])
 println("szwc:",sqrt(abs(mapreduce(x -> (x^2)/ccc,+,szz)-jg1[tttt])/ccc))
 println("sxwc:",sqrt(abs(mapreduce(x -> (x^2)/ccc,+,sxx)-jg2[tttt])/ccc))
 println("jsl:",jsl/(nnnn*M*L+clll*M*L))
-println()
 println("r:",r/(nnnn*M*L+clll*M*L))
 println("worry:",worry)
+println()
 end
 println("z:", jg1)
 println("x:",jg2)
@@ -417,5 +429,89 @@ println("x:",jg2)
 # 	end
 # 	return up*down 
 # end
+# function startcs()
+# #global vup 
+# #global vdown
+# global bup
+# global bdown
+# global K
+# global sm
+# #vdown=zeros(L,L,M)
+# #vup=zeros(L,L,M)
 
 
+# sm=map(pd,rand(M,L))
+# K=exp(map(Float64,k(-dt*t,L,dim)))
+# #K=exp([0 1 0 0 0 1 ; 1 0 1 0 0 0; 0 1 0 1 0 0; 0 0 1 0 1 0; 0 0 0 1 0 1 ;1 0 0 0 1 0].*dt)
+# #print(map(Float64,k(-dt*t,L,dim)))
+# #print(sm)
+
+# 	global gup
+#     global gdown
+# 	# global vup 
+# 	# global vdown
+# 	global bup
+# 	global bdown
+#     global K
+# 	global sm
+# 	bup=zeros(L,L,M)
+# 	bdown=zeros(L,L,M)
+#     gup=zeros(L,L,M)
+# 	gdown=zeros(L,L,M)
+# 	gupcs=zeros(L,L,M)
+# 	gdowncs=zeros(L,L,M)
+#     for i  in 1:M
+    	
+#     	bup[:,:,i]=K*(Diagonal(map(exp,sm[i,:]*(-1)*lambda.-(-mu+U/2)*dt)))
+#     	bdown[:,:,i]=K*(Diagonal(map(exp,sm[i,:]*(1)*lambda.-(-mu+U/2)*dt)))
+# 		# vup[:,:,i]=Diagonal(sm[i,:])*(lambda/dt)+I*(mu+U/2)
+# 		# vdown[:,:,i]=Diagonal(sm[i,:])*(-lambda/dt)+I*(mu+U/2)
+#   #   	bup[:,:,i]=K*exp.(vup[:,:,i].*dt)
+#   #   	bdown[:,:,i]=K*exp.(vdown[:,:,i].*dt)
+# 	end
+#     #println("bup:",bup)
+# 	for i in 1:M
+    
+#     	Aup=I
+#     	Adown=I
+#     	for j in ax(i)
+#     		Aup = Aup*bup[:,:,j]
+#     		Adown =Adown*bdown[:,:,j]
+#     	end
+    
+# 		gupcs[:,:,i]=inv(I+Aup)
+# 		gdowncs[:,:,i]=inv(I+Adown)
+# 	end
+# 	#println("gupcs:",gupcs)
+# 	for i in 1:M
+# 		# println(ax(i)[end:-1:1])
+# 		gup[:,:,i]=mmm(bup,ax(i)[end:-1:1],bc)
+# 		gdown[:,:,i]=mmm(bdown,ax(i)[end:-1:1],bc)
+# 	end #startcs
+    # println("up:",gup[:,:,1]-gupcs[:,:,1])
+    # println("down:",gdown[:,:,1] - gdowncs[:,:,1])
+    # Uc,S,V=svd(bup[:,:,1])
+    # Uc,S,Vd=svd(bup[:,:,2]*Uc*Diagonal(S))
+    # V=transpose(Vd)*transpose(V)
+    # F=svd(inv(Uc)*inv(V)+Diagonal(S))
+
+    # gcs=inv(transpose(F.V)*V)*Diagonal(F.S.^-1)*inv(Uc*F.U)
+    #gcs=inv(V)*inv(inv(Uc)*inv(V)+Diagonal(S))*inv(Uc)
+    # println("1:",det(gup[:,:,1]))
+    # println("2:",det(gup[:,:,2]))
+    #println("gupcs:", gupcs[:,:,1] - gcs)
+# 			for tt in 1:M 
+#             #println("m")
+# 			#print(tt)
+# 				for sp in 1:L
+#                  rjs(sp,tt)
+#              	end
+# 			end
+# 	return worry
+# end
+
+ # for nn in 1:1
+	# worry=0
+	
+	# println("worry:",startcs())
+ # end
